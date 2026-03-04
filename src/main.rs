@@ -1,5 +1,6 @@
 mod api;
 mod config;
+mod dashboard;
 mod logging;
 mod providers;
 mod router;
@@ -36,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Arc::new(AppConfig::load()?);
     let db = DbLogger::new("openrouter_local.db").await?;
+    let dashboard_db = db.clone();
 
     let mut providers_map: HashMap<String, Arc<dyn ProviderAdapter>> = HashMap::new();
     for (id, p) in &config.providers {
@@ -90,7 +92,8 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/v1/chat/completions", post(api::chat::chat_completions))
         .route("/v1/models", get(api::models::list_models))
-        .with_state(model_router);
+        .with_state(model_router)
+        .merge(dashboard::router(dashboard_db));
 
     let bind_addr = format!("{}:{}", config.server.bind, config.server.port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
