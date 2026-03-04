@@ -21,7 +21,10 @@ pub struct ModelRouter {
 }
 
 impl ModelRouter {
-    pub async fn chat(&self, req: NormalizedChatRequest) -> Result<NormalizedChatResponse, ProviderError> {
+    pub async fn chat(
+        &self,
+        req: NormalizedChatRequest,
+    ) -> Result<NormalizedChatResponse, ProviderError> {
         let request_id = Uuid::new_v4().to_string();
         let started = Instant::now();
 
@@ -45,11 +48,14 @@ impl ModelRouter {
             match provider.chat(call_req.clone()).await {
                 Ok(resp) => {
                     let prompt_tokens = self.token_counter.count_prompt(&model, &call_req.messages);
-                    let completion_tokens = self.token_counter.count_completion(&model, &resp.content);
+                    let completion_tokens =
+                        self.token_counter.count_completion(&model, &resp.content);
                     let total_tokens = prompt_tokens + completion_tokens;
                     let latency = started.elapsed().as_millis() as i64;
-                    let cost = (prompt_tokens as f64 / 1_000_000f64) * model_cfg.pricing.input_per_1m
-                        + (completion_tokens as f64 / 1_000_000f64) * model_cfg.pricing.output_per_1m;
+                    let cost = (prompt_tokens as f64 / 1_000_000f64)
+                        * model_cfg.pricing.input_per_1m
+                        + (completion_tokens as f64 / 1_000_000f64)
+                            * model_cfg.pricing.output_per_1m;
 
                     self.db
                         .persist(LogRecord {
@@ -83,6 +89,10 @@ impl ModelRouter {
         req: NormalizedChatRequest,
         tx: mpsc::Sender<StreamChunk>,
     ) -> Result<(), ProviderError> {
+        let request_id = Uuid::new_v4().to_string();
+        let started = Instant::now();
+        let request_json = serde_json::to_string(&req.messages).unwrap_or_default();
+
         let model_cfg = self
             .config
             .models
@@ -92,6 +102,58 @@ impl ModelRouter {
             .providers
             .get(&model_cfg.provider)
             .ok_or_else(|| ProviderError::Config("provider not found".to_string()))?;
-        provider.chat_stream(req, tx).await
+
+        let model = req.model.clone();
+        let provider_name = model_cfg.provider.clone();
+        let mut call_req = req;
+        call_req.model = model.clone();
+
+        let (provider_tx, mut provider_rx) = mpsc::channel::<StreamChunk>(32);
+        let provider = Arc::clone(provider);
+        let stream_task =
+            tokio::spawn(async move { provider.chat_stream(call_req, provider_tx).await });
+
+        let mut response_text = String::new();
+        while let Some(chunk) = provider_rx.recv().await {
+            response_text.push_str(&chunk.content_delta);
+            tx.send(chunk)
+                .await
+                .map_err(|e| ProviderError::Http(e.to_string()))?;
+        }
+
+        let stream_result = stream_task
+            .await
+            .map_err(|e| ProviderError::Http(format!("stream task failed: {e}")))?;
+
+        let prompt_tokens = self.token_counter.count_prompt(&model, &req.messages);
+        let completion_tokens = self.token_counter.count_completion(&model, &response_text);
+        let total_tokens = prompt_tokens + completion_tokens;
+        let latency = started.elapsed().as_millis() as i64;
+        let cost = (prompt_tokens as f64 / 1_000_000f64) * model_cfg.pricing.input_per_1m
+            + (completion_tokens as f64 / 1_000_000f64) * model_cfg.pricing.output_per_1m;
+
+        let (response_record, error_record) = match &stream_result {
+            Ok(()) => (Some(response_text), None),
+            Err(err) => (None, Some(err.to_string())),
+        };
+
+        self.db
+            .persist(LogRecord {
+                id: request_id,
+                created_at: Utc::now().timestamp(),
+                model,
+                provider: provider_name,
+                request_json,
+                response_text: response_record,
+                prompt_tokens: Some(prompt_tokens as i64),
+                completion_tokens: Some(completion_tokens as i64),
+                total_tokens: Some(total_tokens as i64),
+                latency_ms: Some(latency),
+                cost: Some(cost),
+                error: error_record,
+            })
+            .await;
+
+        stream_result
     }
 }
