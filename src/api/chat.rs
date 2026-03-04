@@ -43,9 +43,17 @@ pub async fn chat_completions(
         messages: req
             .messages
             .into_iter()
-            .map(|m| Message {
-                role: m.role,
-                content: m.content,
+            .map(|m| {
+                if m.content.has_non_text_parts() {
+                    tracing::warn!(
+                        "Received non-text content parts; ignoring them (text-only MVP)"
+                    );
+                }
+
+                Message {
+                    role: m.role,
+                    content: m.content.to_plain_text(),
+                }
             })
             .collect(),
         temperature: req.temperature,
