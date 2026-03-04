@@ -8,8 +8,14 @@ mod types;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use axum::{routing::{get, post}, Router};
-use providers::{cli::CliAdapter, gemini_http::GeminiHttpAdapter, openai_http::OpenAiHttpAdapter, ProviderAdapter};
+use axum::{
+    routing::{get, post},
+    Router,
+};
+use providers::{
+    cli::CliAdapter, gemini_http::GeminiHttpAdapter, openai_http::OpenAiHttpAdapter,
+    ProviderAdapter,
+};
 use router::model_router::ModelRouter;
 use token::{naive::NaiveTokenCounter, TokenCounter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -18,6 +24,8 @@ use crate::{config::AppConfig, logging::db::DbLogger};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -33,23 +41,37 @@ async fn main() -> anyhow::Result<()> {
     for (id, p) in &config.providers {
         let adapter: Arc<dyn ProviderAdapter> = match p.kind.as_str() {
             "openai_http" => {
-                let api_env = p.api_key_env.clone().ok_or_else(|| anyhow::anyhow!("api_key_env missing"))?;
-                let key = std::env::var(api_env)?;
+                let api_env = p
+                    .api_key_env
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("api_key_env missing"))?;
+                let key = std::env::var(&api_env)
+                    .map_err(|_| anyhow::anyhow!("Missing env variable: {}", api_env))?;
                 Arc::new(OpenAiHttpAdapter::new(
-                    p.base_url.clone().ok_or_else(|| anyhow::anyhow!("base_url missing"))?,
+                    p.base_url
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("base_url missing"))?,
                     key,
                 ))
             }
             "gemini_http" => {
-                let api_env = p.api_key_env.clone().ok_or_else(|| anyhow::anyhow!("api_key_env missing"))?;
-                let key = std::env::var(api_env)?;
+                let api_env = p
+                    .api_key_env
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("api_key_env missing"))?;
+                let key = std::env::var(&api_env)
+                    .map_err(|_| anyhow::anyhow!("Missing env variable: {}", api_env))?;
                 Arc::new(GeminiHttpAdapter::new(
-                    p.base_url.clone().ok_or_else(|| anyhow::anyhow!("base_url missing"))?,
+                    p.base_url
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("base_url missing"))?,
                     key,
                 ))
             }
             "cli" => Arc::new(CliAdapter::new(
-                p.command.clone().ok_or_else(|| anyhow::anyhow!("command missing"))?,
+                p.command
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("command missing"))?,
                 p.args.clone(),
             )),
             _ => return Err(anyhow::anyhow!("unsupported provider kind")),
