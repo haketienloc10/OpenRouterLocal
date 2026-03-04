@@ -16,12 +16,12 @@ providers:
   gemini_cli:
     kind: "cli"
     command: "gemini"
-    args: ["--quiet"]
+    args: ["-m", "gemini-2.5-flash", "-p"]
 
   qwen_cli:
     kind: "cli"
     command: "qwen"
-    args: ["--quiet"]
+    args: []
 
 models:
   gpt-4o:
@@ -42,7 +42,7 @@ models:
       input_per_1m: 0.0
       output_per_1m: 0.0
 
-  qwen-max:
+  qwen-cli:
     provider: "qwen_cli"
     pricing:
       input_per_1m: 0.0

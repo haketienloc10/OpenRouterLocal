@@ -35,3 +35,9 @@ curl -N http://127.0.0.1:18790/v1/chat/completions \
     "stream":true
   }'
 ```
+
+
+CLI command mappings:
+
+- `gemini-cli` uses `gemini -m gemini-2.5-flash -p "<prompt>"`
+- `qwen-cli` uses `qwen "<prompt>"`

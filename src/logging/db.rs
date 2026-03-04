@@ -1,4 +1,6 @@
-use sqlx::{Pool, Sqlite, SqlitePool};
+use std::path::Path;
+
+use sqlx::{sqlite::SqliteConnectOptions, Pool, Sqlite, SqlitePool};
 
 #[derive(Clone)]
 pub struct DbLogger {
@@ -23,9 +25,18 @@ pub struct LogRecord {
 
 impl DbLogger {
     pub async fn new(path: &str) -> anyhow::Result<Self> {
-        let url = format!("sqlite://{}", path);
-        let pool = SqlitePool::connect(&url).await?;
-        sqlx::query(include_str!("schema.sql")).execute(&pool).await?;
+        let db_path = Path::new(path);
+        if let Some(parent) = db_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let opts = SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(true);
+        let pool = SqlitePool::connect_with(opts).await?;
+        sqlx::query(include_str!("schema.sql"))
+            .execute(&pool)
+            .await?;
         Ok(Self { pool })
     }
 
