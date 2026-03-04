@@ -20,3 +20,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1.10", features = ["v4", "fast-rng"] }
 chrono = { version = "0.4", features = ["clock"] }
+dotenvy = "0.15"

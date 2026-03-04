@@ -4,8 +4,8 @@
 
 ```bash
 cd openrouter-local
-export OPENAI_API_KEY=...
-export GEMINI_API_KEY=...
+cp .env.example .env
+# edit .env and set your real API keys
 # optional
 # export ROUTER_CONFIG=./config/router.yaml
 cargo run
