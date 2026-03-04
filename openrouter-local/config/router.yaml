@@ -1,0 +1,51 @@
+server:
+  bind: "127.0.0.1"
+  port: 18790
+
+providers:
+  openai:
+    kind: "openai_http"
+    base_url: "https://api.openai.com/v1"
+    api_key_env: "OPENAI_API_KEY"
+
+  google:
+    kind: "gemini_http"
+    base_url: "https://generativelanguage.googleapis.com"
+    api_key_env: "GEMINI_API_KEY"
+
+  gemini_cli:
+    kind: "cli"
+    command: "gemini"
+    args: ["--quiet"]
+
+  qwen_cli:
+    kind: "cli"
+    command: "qwen"
+    args: ["--quiet"]
+
+models:
+  gpt-4o:
+    provider: "openai"
+    pricing:
+      input_per_1m: 5.0
+      output_per_1m: 15.0
+
+  gemini-2.5-flash:
+    provider: "google"
+    pricing:
+      input_per_1m: 0.35
+      output_per_1m: 1.05
+
+  gemini-cli:
+    provider: "gemini_cli"
+    pricing:
+      input_per_1m: 0.0
+      output_per_1m: 0.0
+
+  qwen-max:
+    provider: "qwen_cli"
+    pricing:
+      input_per_1m: 0.0
+      output_per_1m: 0.0
+
+fallback_models: []
