@@ -3,7 +3,6 @@
 ## Run
 
 ```bash
-cd openrouter-local
 cp .env.example .env
 # edit .env and set your real API keys
 # optional
