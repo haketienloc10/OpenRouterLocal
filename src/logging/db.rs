@@ -1,6 +1,9 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
-use sqlx::{sqlite::SqliteConnectOptions, Pool, QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
+    Pool, QueryBuilder, Sqlite, SqlitePool,
+};
 
 #[derive(Clone)]
 pub struct DbLogger {
@@ -66,8 +69,29 @@ impl DbLogger {
 
         let opts = SqliteConnectOptions::new()
             .filename(db_path)
-            .create_if_missing(true);
-        let pool = SqlitePool::connect_with(opts).await?;
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(Duration::from_secs(5))
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(10)
+            .connect_with(opts)
+            .await?;
+
+        sqlx::query("PRAGMA journal_mode=WAL;")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA synchronous=NORMAL;")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA busy_timeout=5000;")
+            .execute(&pool)
+            .await?;
+        sqlx::query("PRAGMA foreign_keys=ON;")
+            .execute(&pool)
+            .await?;
+
         sqlx::query(include_str!("schema.sql"))
             .execute(&pool)
             .await?;
@@ -88,28 +112,57 @@ impl DbLogger {
     }
 
     pub async fn persist(&self, rec: LogRecord) {
-        let query = sqlx::query(
-            r#"INSERT INTO llm_requests
-            (id, created_at, model, provider, request_json, response_text, prompt_tokens, completion_tokens, total_tokens, latency_ms, cost, error)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
-        )
-        .bind(rec.id)
-        .bind(rec.created_at)
-        .bind(rec.model)
-        .bind(rec.provider)
-        .bind(rec.request_json)
-        .bind(rec.response_text)
-        .bind(rec.prompt_tokens)
-        .bind(rec.completion_tokens)
-        .bind(rec.total_tokens)
-        .bind(rec.latency_ms)
-        .bind(rec.cost)
-        .bind(rec.error)
-        .execute(&self.pool)
-        .await;
+        const MAX_RETRIES: usize = 3;
 
-        if let Err(err) = query {
-            tracing::error!(error = %err, "failed to persist log record");
+        tracing::debug!(id = %rec.id, "db persist start");
+
+        for attempt in 0..=MAX_RETRIES {
+            let query = sqlx::query(
+                r#"INSERT INTO llm_requests
+                (id, created_at, model, provider, request_json, response_text, prompt_tokens, completion_tokens, total_tokens, latency_ms, cost, error)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)"#,
+            )
+            .bind(&rec.id)
+            .bind(rec.created_at)
+            .bind(&rec.model)
+            .bind(&rec.provider)
+            .bind(&rec.request_json)
+            .bind(&rec.response_text)
+            .bind(rec.prompt_tokens)
+            .bind(rec.completion_tokens)
+            .bind(rec.total_tokens)
+            .bind(rec.latency_ms)
+            .bind(rec.cost)
+            .bind(&rec.error)
+            .execute(&self.pool)
+            .await;
+
+            match query {
+                Ok(_) => {
+                    tracing::debug!(id = %rec.id, "db persist success");
+                    return;
+                }
+                Err(err) if is_sqlite_busy(&err) && attempt < MAX_RETRIES => {
+                    let delay_ms = 50_u64 * (1_u64 << attempt);
+                    tracing::warn!(
+                        error = %err,
+                        id = %rec.id,
+                        attempt = attempt + 1,
+                        delay_ms,
+                        "sqlite busy/locked during persist; retrying"
+                    );
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                }
+                Err(err) => {
+                    tracing::error!(
+                        error = %err,
+                        sqlite_code = ?err.as_database_error().and_then(|d| d.code()),
+                        id = %rec.id,
+                        "failed to persist log record"
+                    );
+                    return;
+                }
+            }
         }
     }
 
@@ -172,6 +225,12 @@ impl DbLogger {
 
         Ok((models, providers))
     }
+}
+
+fn is_sqlite_busy(err: &sqlx::Error) -> bool {
+    let code = err.as_database_error().and_then(|d| d.code());
+    matches!(code.as_deref(), Some("5") | Some("6"))
+        || err.to_string().contains("database is locked")
 }
 
 fn apply_filters(qb: &mut QueryBuilder<'_, Sqlite>, search: &RequestListSearch) {

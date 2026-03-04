@@ -1,3 +1,4 @@
+use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use serde_json::Value;
 
 use crate::logging::db::{DashboardRequestRow, RequestListResult, RequestListSearch};
@@ -27,6 +28,25 @@ fn fmt_opt_i64(val: Option<i64>) -> String {
 fn fmt_opt_f64(val: Option<f64>) -> String {
     val.map(|v| format!("{v:.6}"))
         .unwrap_or_else(|| "-".to_string())
+}
+
+fn fmt_time_gmt7(created_at: i64) -> String {
+    let secs = if created_at > 10_000_000_000 {
+        created_at / 1000
+    } else {
+        created_at
+    };
+
+    let dt_utc: DateTime<Utc> = Utc.timestamp_opt(secs, 0).single().unwrap_or_else(|| {
+        Utc.timestamp_opt(0, 0)
+            .single()
+            .expect("epoch must be valid")
+    });
+    let tz = FixedOffset::east_opt(7 * 3600).expect("GMT+7 offset should be valid");
+    dt_utc
+        .with_timezone(&tz)
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string()
 }
 
 pub fn render_dashboard_page(
@@ -254,7 +274,7 @@ fn render_request_row(row: &DashboardRequestRow) -> String {
 <td class="p-3">{status}</td>
 <td class="p-3"><a class="text-blue-600 hover:underline" href="/dashboard/requests/{id}">View</a></td>
 </tr>"#,
-        created_at = row.created_at,
+        created_at = fmt_time_gmt7(row.created_at),
         model = escape_html(&row.model),
         provider = escape_html(&row.provider),
         prompt = fmt_opt_i64(row.prompt_tokens),
@@ -325,7 +345,7 @@ pub fn render_request_detail(row: &DashboardRequestRow) -> String {
 </body>
 </html>"##,
         id = escape_html(&row.id),
-        created_at = row.created_at,
+        created_at = fmt_time_gmt7(row.created_at),
         model = escape_html(&row.model),
         provider = escape_html(&row.provider),
         latency = fmt_opt_i64(row.latency_ms),
