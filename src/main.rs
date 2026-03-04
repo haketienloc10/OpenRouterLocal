@@ -1,7 +1,9 @@
 mod api;
+mod cli;
 mod config;
 mod dashboard;
 mod logging;
+mod process_manager;
 mod providers;
 mod router;
 mod token;
@@ -13,6 +15,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use clap::Parser;
 use providers::{
     cli::CliAdapter, gemini_http::GeminiHttpAdapter, openai_http::OpenAiHttpAdapter,
     ProviderAdapter,
@@ -21,12 +24,27 @@ use router::model_router::ModelRouter;
 use token::{naive::NaiveTokenCounter, TokenCounter};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::{config::AppConfig, logging::db::DbLogger};
+use crate::{
+    cli::{Cli, Commands},
+    config::AppConfig,
+    logging::db::DbLogger,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
+    let cli = Cli::parse();
+    match cli.command.unwrap_or(Commands::Serve) {
+        Commands::Serve => run_server().await,
+        Commands::Start => process_manager::start_background(),
+        Commands::Stop => process_manager::stop_background(),
+        Commands::Restart => process_manager::restart_background(),
+        Commands::Logs { follow, lines } => process_manager::logs(lines, follow),
+    }
+}
+
+async fn run_server() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
