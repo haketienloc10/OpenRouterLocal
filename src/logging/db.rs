@@ -2,7 +2,7 @@ use std::{path::Path, time::Duration};
 
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
-    Pool, QueryBuilder, Sqlite, SqlitePool,
+    Pool, QueryBuilder, Sqlite,
 };
 
 #[derive(Clone)]
