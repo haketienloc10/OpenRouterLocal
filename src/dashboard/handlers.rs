@@ -37,6 +37,28 @@ impl DashboardQuery {
     }
 }
 
+pub async fn dashboard_errors_page(
+    State(db): State<DbLogger>,
+    Query(query): Query<DashboardQuery>,
+) -> impl IntoResponse {
+    let mut search = query.into_search();
+    search.has_error = true;
+    match db.distinct_model_provider_values().await {
+        Ok((models, providers)) => Html(pages::render_dashboard_error_page(
+            &models, &providers, &search,
+        ))
+        .into_response(),
+        Err(err) => {
+            tracing::error!(error = %err, "failed to load dashboard error filters");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Html(pages::render_error_page("Failed to load error dashboard.")),
+            )
+                .into_response()
+        }
+    }
+}
+
 pub async fn dashboard_page(
     State(db): State<DbLogger>,
     Query(query): Query<DashboardQuery>,
