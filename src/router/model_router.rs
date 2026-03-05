@@ -33,6 +33,8 @@ impl ModelRouter {
 
         let request_json = serde_json::to_string(&req.messages).unwrap_or_default();
         let mut last_err: Option<ProviderError> = None;
+        let mut last_provider = "unknown".to_string();
+        let mut last_model = req.model.clone();
 
         for model in try_models {
             let Some(model_cfg) = self.config.models.get(&model) else {
@@ -41,6 +43,9 @@ impl ModelRouter {
             let Some(provider) = self.providers.get(&model_cfg.provider) else {
                 continue;
             };
+
+            last_model = model.clone();
+            last_provider = model_cfg.provider.clone();
 
             let mut call_req = req.clone();
             call_req.model = model.clone();
@@ -81,7 +86,35 @@ impl ModelRouter {
             }
         }
 
-        Err(last_err.unwrap_or(ProviderError::Config("no route found".to_string())))
+        let error = last_err.unwrap_or(ProviderError::Config("no route found".to_string()));
+        let latency = started.elapsed().as_millis() as i64;
+
+        tracing::error!(
+            request_id = %request_id,
+            model = %last_model,
+            provider = %last_provider,
+            error = %error,
+            "chat request failed"
+        );
+
+        self.db
+            .persist(LogRecord {
+                id: request_id,
+                created_at: Utc::now().timestamp(),
+                model: last_model,
+                provider: last_provider,
+                request_json,
+                response_text: None,
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+                latency_ms: Some(latency),
+                cost: None,
+                error: Some(error.to_string()),
+            })
+            .await;
+
+        Err(error)
     }
 
     pub async fn chat_stream(
