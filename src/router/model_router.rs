@@ -105,6 +105,7 @@ impl ModelRouter {
 
         let model = req.model.clone();
         let provider_name = model_cfg.provider.clone();
+        let prompt_messages = req.messages.clone();
         let mut call_req = req;
         call_req.model = model.clone();
 
@@ -125,7 +126,7 @@ impl ModelRouter {
             .await
             .map_err(|e| ProviderError::Http(format!("stream task failed: {e}")))?;
 
-        let prompt_tokens = self.token_counter.count_prompt(&model, &req.messages);
+        let prompt_tokens = self.token_counter.count_prompt(&model, &prompt_messages);
         let completion_tokens = self.token_counter.count_completion(&model, &response_text);
         let total_tokens = prompt_tokens + completion_tokens;
         let latency = started.elapsed().as_millis() as i64;
