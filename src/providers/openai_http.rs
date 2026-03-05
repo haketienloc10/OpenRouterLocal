@@ -3,7 +3,7 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
-use crate::providers::{ProviderAdapter, ProviderError};
+use crate::providers::{split_text_by_char_count, ProviderAdapter, ProviderError};
 use crate::types::normalized::{NormalizedChatRequest, NormalizedChatResponse, StreamChunk};
 
 pub struct OpenAiHttpAdapter {
@@ -78,9 +78,9 @@ impl ProviderAdapter for OpenAiHttpAdapter {
         tx: mpsc::Sender<StreamChunk>,
     ) -> Result<(), ProviderError> {
         let res = self.chat(req).await?;
-        for chunk in res.content.as_bytes().chunks(64) {
+        for chunk in split_text_by_char_count(&res.content, 64) {
             tx.send(StreamChunk {
-                content_delta: String::from_utf8_lossy(chunk).to_string(),
+                content_delta: chunk,
             })
             .await
             .map_err(|e| ProviderError::Http(e.to_string()))?;
