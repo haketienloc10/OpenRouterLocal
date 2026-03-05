@@ -1,128 +1,282 @@
-# openrouter-local
+# OpenRouterLocal
 
-Local gateway tương thích OpenAI API (`/v1/chat/completions`) với khả năng route nhiều provider (OpenAI HTTP, Gemini HTTP, CLI), fallback model, logging request và dashboard theo dõi.
+**OpenRouterLocal** là một **local gateway tương thích OpenAI API** cho phép route request tới nhiều provider khác nhau (OpenAI HTTP, Gemini HTTP, CLI tools như `gemini`, `qwen`).  
 
-## Tính năng chính
+Gateway hỗ trợ logging request vào SQLite và cung cấp **dashboard web** để theo dõi request, token usage và lỗi.
 
-- API tương thích OpenAI Chat Completions:
-  - `POST /v1/chat/completions` (stream + non-stream)
+---
+
+# Tính năng
+
+- API tương thích OpenAI:
+  - `POST /v1/chat/completions`
   - `GET /v1/models`
-- Router theo model, hỗ trợ `fallback_models` khi model chính lỗi.
+- Hỗ trợ **streaming và non-streaming**
+- Router theo model
+- Hỗ trợ **fallback model**
 - Provider hỗ trợ:
   - `openai_http`
   - `gemini_http`
-  - `cli` (ví dụ `gemini`, `qwen`)
-- Ghi log request/response/token/cost vào SQLite (`openrouter_local.db`).
-- Dashboard web:
-  - `GET /dashboard`
-  - Chi tiết request: `/dashboard/requests/:id`
+  - `cli` (`gemini`, `qwen`)
+- Logging request vào SQLite (`openrouter_local.db`)
+- Dashboard web để xem log request
 
-## Yêu cầu
+---
 
-- Rust toolchain ổn định (khuyến nghị mới)
-- (Tuỳ chọn) CLI tools nếu dùng provider `cli`:
-  - `gemini`
-  - `qwen`
+# Yêu cầu
 
-## Cấu hình
+- Rust toolchain (stable)
+- Cargo
 
-### 1) Environment
+Tuỳ chọn nếu dùng CLI provider:
+
+- `gemini`
+- `qwen`
+
+Các binary này cần tồn tại trong `$PATH`.
+
+---
+
+# Cài đặt
+
+## 1. Clone repository
+
+```bash
+git clone https://github.com/haketienloc10/OpenRouterLocal.git
+cd OpenRouterLocal
+````
+
+---
+
+## 2. Cấu hình environment
+
+Copy file `.env.example`:
 
 ```bash
 cp .env.example .env
-# cập nhật API keys thật
 ```
 
-Biến môi trường mặc định:
+Sau đó cập nhật API key thật:
 
-- `OPENAI_API_KEY`
-- `GEMINI_API_KEY`
-- `ROUTER_CONFIG` (tuỳ chọn, mặc định `./config/router.yaml`)
+```env
+OPENAI_API_KEY=your_openai_api_key
+GEMINI_API_KEY=your_gemini_api_key
+```
 
-### 2) Router config
+Tuỳ chọn:
 
-File mặc định: `config/router.yaml`
+```env
+ROUTER_CONFIG=./config/router.yaml
+```
 
-Các phần chính:
+---
 
-- `server.bind`, `server.port`
-- `providers.<id>`:
-  - `kind`: `openai_http` | `gemini_http` | `cli`
-  - HTTP provider dùng `base_url`, `api_key_env`
-  - CLI provider dùng `command`, `args`
-- `models.<model_name>.provider`
-- `models.<model_name>.pricing`
-- `fallback_models` (danh sách model dùng khi model trước đó thất bại)
+## 3. Cài binary
 
-## Chạy ứng dụng
+Khuyến nghị cài binary để có thể dùng như lệnh hệ thống:
 
-### Chạy foreground
+```bash
+cargo install --path . --force
+```
+
+Binary sẽ được cài vào:
+
+```
+~/.cargo/bin/openrouter-local
+```
+
+Đảm bảo `~/.cargo/bin` có trong `$PATH`.
+
+---
+
+# Chạy ứng dụng
+
+## Chạy foreground (debug)
 
 ```bash
 cargo run
-# hoặc
+```
+
+hoặc
+
+```bash
 cargo run -- serve
 ```
 
-### Quản lý tiến trình background
+Server sẽ chạy tại:
 
-```bash
-cargo run -- start
-cargo run -- stop
-cargo run -- restart
-cargo run -- logs -n 200
-cargo run -- logs -f
+```
+http://127.0.0.1:18790
 ```
 
-Log và PID được lưu trong thư mục `logs/`.
+---
 
-## API examples
+### Chạy daemon (background)
 
-### Non-streaming
+> Khuyến nghị cài binary vào PATH để dùng như một lệnh hệ thống.
+
+Cài / cập nhật binary:
 
 ```bash
-curl -s http://127.0.0.1:18790/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model":"gpt-4o",
-    "messages":[{"role":"user","content":"Say hello from openrouter-local"}],
-    "stream":false
-  }'
+cargo install --path . --force
 ```
 
-### Streaming
+Sau đó bạn có thể quản lý service bằng các lệnh:
+
+```bash
+openrouter-local start
+openrouter-local stop
+openrouter-local logs -f
+openrouter-local restart
+```
+
+Bạn cũng có thể xem log không follow:
+
+```bash
+openrouter-local logs -n 200
+```
+
+Log và PID nằm trong thư mục:
+
+```
+logs/server.log
+logs/server.pid
+```
+
+---
+
+# Kiểm tra server
+
+Test nhanh gateway:
+
+```bash
+curl http://127.0.0.1:18790/v1/models
+```
+
+---
+
+# API examples
+
+## Chat completion (non-stream)
+
+```bash
+curl http://127.0.0.1:18790/v1/chat/completions \
+-H "Content-Type: application/json" \
+-d '{
+  "model":"gpt-4o",
+  "messages":[{"role":"user","content":"Say hello from openrouter-local"}],
+  "stream":false
+}'
+```
+
+---
+
+## Chat completion (stream)
 
 ```bash
 curl -N http://127.0.0.1:18790/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "model":"gemini-cli",
-    "messages":[{"role":"user","content":"Stream a short poem"}],
-    "stream":true
-  }'
+-H "Content-Type: application/json" \
+-d '{
+  "model":"gemini-cli",
+  "messages":[{"role":"user","content":"Write a short poem"}],
+  "stream":true
+}'
 ```
 
-### Danh sách model
+---
+
+## Danh sách model
 
 ```bash
-curl -s http://127.0.0.1:18790/v1/models | jq
+curl http://127.0.0.1:18790/v1/models
 ```
 
-## Dashboard
+---
+
+# Dashboard
 
 Mở trình duyệt tại:
 
-- `http://127.0.0.1:18790/dashboard`
+```
+http://127.0.0.1:18790/dashboard
+```
 
-Dashboard hiển thị danh sách request, filter theo model/provider/lỗi, và xem chi tiết từng request.
+Dashboard hiển thị:
 
-## Ghi chú về CLI provider
+* danh sách request
+* token usage
+* latency
+* cost
+* error
+* chi tiết request / response
 
-Với cấu hình mặc định trong `config/router.yaml`:
+---
 
-- `gemini-cli` dùng lệnh tương đương:
-  - `gemini -m gemini-2.5-flash -p "<prompt>"`
-- `qwen-cli` dùng lệnh tương đương:
-  - `qwen "<prompt>"`
+# Cấu hình router
 
-Đảm bảo các binary tương ứng tồn tại trong `PATH`.
+File cấu hình mặc định:
+
+```
+config/router.yaml
+```
+
+Ví dụ:
+
+```yaml
+providers:
+  openai:
+    kind: openai_http
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
+  gemini:
+    kind: gemini_http
+    base_url: https://generativelanguage.googleapis.com
+    api_key_env: GEMINI_API_KEY
+
+  gemini_cli:
+    kind: cli
+    command: gemini
+    args: ["-m", "gemini-2.5-flash"]
+
+models:
+  gpt-4o:
+    provider: openai
+
+  gemini-cli:
+    provider: gemini_cli
+```
+
+---
+
+# Cập nhật khi có source mới
+
+Khi repository có cập nhật mới:
+
+```bash
+git pull
+```
+
+Sau đó build lại binary:
+
+```bash
+cargo install --path . --force
+```
+
+Restart service:
+
+```bash
+openrouter-local restart
+```
+
+---
+
+# Development workflow
+
+Khuyến nghị workflow:
+
+```bash
+cargo install --path . --force
+openrouter-local start
+openrouter-local logs -f
+```
