@@ -54,43 +54,24 @@ Các phần chính:
 - `models.<model_name>.pricing`
 - `fallback_models` (danh sách model dùng khi model trước đó thất bại)
 
-## Cài binary và cập nhật khi có code mới
-
-Để dùng lệnh `openrouter-local` trực tiếp, cài binary vào Cargo bin:
-
-```bash
-cargo install --path .
-```
-
-Khi có code mới, cần cập nhật lại binary bằng lệnh:
-
-```bash
-cargo install --path . --force
-```
-
 ## Chạy ứng dụng
 
 ### Chạy foreground
 
 ```bash
-openrouter-local serve
-# hoặc chạy trực tiếp bằng cargo
+cargo run
+# hoặc
 cargo run -- serve
 ```
 
-### Chạy daemon (background)
+### Quản lý tiến trình background
 
 ```bash
-openrouter-local start
-openrouter-local stop
-openrouter-local logs -f
-openrouter-local restart
-```
-
-Bạn cũng có thể xem log không follow:
-
-```bash
-openrouter-local logs -n 200
+cargo run -- start
+cargo run -- stop
+cargo run -- restart
+cargo run -- logs -n 200
+cargo run -- logs -f
 ```
 
 Log và PID được lưu trong thư mục `logs/`.
