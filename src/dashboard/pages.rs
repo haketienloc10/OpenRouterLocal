@@ -20,6 +20,19 @@ fn render_status(err: &Option<String>) -> &'static str {
     }
 }
 
+fn render_error_preview(err: &Option<String>) -> String {
+    match err.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(text) => {
+            let mut preview: String = text.chars().take(120).collect();
+            if text.chars().count() > 120 {
+                preview.push('…');
+            }
+            escape_html(&preview)
+        }
+        None => "-".to_string(),
+    }
+}
+
 fn fmt_opt_i64(val: Option<i64>) -> String {
     val.map(|v| v.to_string())
         .unwrap_or_else(|| "-".to_string())
@@ -102,7 +115,10 @@ pub fn render_dashboard_page(
 </head>
 <body class="bg-slate-100 text-slate-900 min-h-screen">
   <main class="max-w-7xl mx-auto p-6 space-y-4">
-    <h1 class="text-2xl font-bold">OpenRouterLocal Dashboard</h1>
+    <div class="flex items-center justify-between">
+      <h1 class="text-2xl font-bold">OpenRouterLocal Dashboard</h1>
+      <a href="/dashboard/errors" class="text-sm text-red-700 hover:underline">View error logs</a>
+    </div>
 
     <form id="filters"
       class="bg-white rounded-lg shadow p-4 grid grid-cols-1 md:grid-cols-6 gap-3"
@@ -186,9 +202,26 @@ pub fn render_dashboard_page(
     )
 }
 
+pub fn render_dashboard_error_page(
+    models: &[String],
+    providers: &[String],
+    search: &RequestListSearch,
+) -> String {
+    let mut forced = search.clone();
+    forced.has_error = true;
+
+    let page = render_dashboard_page(models, providers, &forced);
+    page.replace("OpenRouterLocal Dashboard", "OpenRouterLocal Error Logs")
+        .replace("Only errors", "Only errors (forced)")
+        .replace(
+            "name=\"has_error\" value=\"1\" checked",
+            "name=\"has_error\" value=\"1\" checked disabled",
+        )
+}
+
 pub fn render_requests_table(result: &RequestListResult, search: &RequestListSearch) -> String {
     let rows = if result.rows.is_empty() {
-        "<tr><td class=\"p-3 text-center text-slate-500\" colspan=\"8\">No requests found</td></tr>"
+        "<tr><td class=\"p-3 text-center text-slate-500\" colspan=\"9\">No requests found</td></tr>"
             .to_string()
     } else {
         result
@@ -224,6 +257,7 @@ pub fn render_requests_table(result: &RequestListResult, search: &RequestListSea
       <th class="p-3">Latency (ms)</th>
       <th class="p-3">Cost</th>
       <th class="p-3">Status</th>
+      <th class="p-3">Error</th>
       <th class="p-3">Action</th>
     </tr>
   </thead>
@@ -272,6 +306,7 @@ fn render_request_row(row: &DashboardRequestRow) -> String {
 <td class="p-3">{latency}</td>
 <td class="p-3">{cost}</td>
 <td class="p-3">{status}</td>
+<td class="p-3 text-xs text-red-700">{error_preview}</td>
 <td class="p-3"><a class="text-blue-600 hover:underline" href="/dashboard/requests/{id}">View</a></td>
 </tr>"#,
         created_at = fmt_time_gmt7(row.created_at),
@@ -283,6 +318,7 @@ fn render_request_row(row: &DashboardRequestRow) -> String {
         latency = fmt_opt_i64(row.latency_ms),
         cost = fmt_opt_f64(row.cost),
         status = render_status(&row.error),
+        error_preview = render_error_preview(&row.error),
         id = escape_html(&row.id),
     )
 }

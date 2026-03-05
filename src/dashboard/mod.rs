@@ -8,6 +8,7 @@ use crate::logging::db::DbLogger;
 pub fn router(db: DbLogger) -> Router {
     Router::new()
         .route("/dashboard", get(handlers::dashboard_page))
+        .route("/dashboard/errors", get(handlers::dashboard_errors_page))
         .route(
             "/dashboard/requests/:id",
             get(handlers::request_detail_page),
